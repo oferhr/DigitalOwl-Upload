@@ -61,7 +61,7 @@ namespace DigtalOwl_Upload
                 SimpleLogger.SimpleLog.Info("No BuisnessLine exist for provided value");
                 throw new Exception("No BuisnessLine exist for provided value");
             }
-
+            SimpleLogger.SimpleLog.Info("available directories count : " + udirs.Length);
             foreach (var udir in udirs)
             {
                 var archive = GetArchiveDate();
@@ -72,27 +72,37 @@ namespace DigtalOwl_Upload
                 }
                 
                 var dest = Path.Combine(adir, udir.Name);
-                Directory.Move(udir.FullName, dest);
+                SimpleLogger.SimpleLog.Info("dest folder : " + dest); 
                 var calc = CalcDir(dest);
-                WriteToExcel(calc);
-                var info = await UploadToPortalAsync(dest, calc, bLineID);
-                if (info)
+                SimpleLogger.SimpleLog.Info("calc dir : " + calc.name + "--" + calc.docs); 
+                if (WriteToExcel(calc))
                 {
-                    var newStatus = new DirData
+                    SimpleLogger.SimpleLog.Info("after write to excel");
+                    var info = await UploadToPortalAsync(dest, calc, bLineID);
+                    if (info)
                     {
-                        date = FormatExcelDate(DateTime.Now),
-                        name = calc.name,
-                        status = "העלה"
-                    };
-                    UpdateExcelStatus(newStatus);
+                        SimpleLogger.SimpleLog.Info("after upload");
+                        var newStatus = new DirData
+                        {
+                            date = FormatExcelDate(DateTime.Now),
+                            name = calc.name,
+                            status = "העלה"
+                        };
+                        UpdateExcelStatus(newStatus);
+                        SimpleLogger.SimpleLog.Info("after update status");
+                        Directory.Move(udir.FullName, dest);
+                        SimpleLogger.SimpleLog.Info("after directory move to archive");
+                    }
                 }
+                
             }
         }
 
         private static async Task<bool> UploadToPortalAsync(string dest, DirData calc, string bLineID)
         {
             var caseId = await GetCaseID(calc.name);
-            if(caseId == "ERROR")
+            SimpleLogger.SimpleLog.Info("in UploadToPortalAsync, case id : " + caseId);
+            if (caseId == "ERROR")
             {
                 return false;
             }
@@ -477,7 +487,7 @@ namespace DigtalOwl_Upload
                 }
             }
         }
-        static void WriteToExcel(DirData data)
+        static bool WriteToExcel(DirData data)
         {
             Excel._Worksheet xlWorksheet = null;
             Excel.Workbook xlWorkbook = null;
@@ -491,36 +501,38 @@ namespace DigtalOwl_Upload
                 var lastRow = xlWorksheet.Cells.SpecialCells(Excel.XlCellType.xlCellTypeLastCell, Type.Missing).Row;
                 var row = lastRow + 1;
 
-
+                SimpleLogger.SimpleLog.Info("before write to excel property loop");
                 foreach (PropertyInfo prop in data.GetType().GetProperties())
                 {
                     switch (prop.Name)
                     {
                         case "date":
-                            xlWorksheet.Range[E_DATE + row, E_DATE + row].Value2 = data.date;
+                            xlWorksheet.Range[E_DATE + row, E_DATE + row].Value2 = data?.date;
                             break;
                         case "name":
-                            xlWorksheet.Range[E_NAME + row, E_NAME + row].Value2 = data.name;
+                            xlWorksheet.Range[E_NAME + row, E_NAME + row].Value2 = data?.name;
                             break;
                         case "docs":
-                            xlWorksheet.Range[E_NUMDOCS + row, E_NUMDOCS + row].Value2 = data.docs;
+                            xlWorksheet.Range[E_NUMDOCS + row, E_NUMDOCS + row].Value2 = data?.docs;
                             break;
                         case "status":
-                            xlWorksheet.Range[E_STATUS + row, E_STATUS + row].Value2 = data.status;
+                            xlWorksheet.Range[E_STATUS + row, E_STATUS + row].Value2 = data?.status;
                             break;
                     }
                 }
+                SimpleLogger.SimpleLog.Info("after write to excel property loop");
                 xlWorkbook.Save();
                 xlWorkbook.Close();
                 xlApp.Quit();
-                //
+                return true;
 
             }
             catch (Exception ex)
             {
+                SimpleLogger.SimpleLog.Log(ex);
                 xlWorkbook.Close();
                 xlApp.Quit();
-                SimpleLogger.SimpleLog.Log(ex);
+                
             }
             finally
             {
@@ -544,6 +556,7 @@ namespace DigtalOwl_Upload
                     Marshal.ReleaseComObject(xlApp);
                 }
             }
+            return false;
         }
         static string FormatExcelDate(DateTime dt)
         {
