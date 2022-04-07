@@ -70,15 +70,15 @@ namespace DigtalOwl_Upload
                 {
                     Directory.CreateDirectory(adir);
                 }
-                
-                var dest = Path.Combine(adir, udir.Name);
-                SimpleLogger.SimpleLog.Info("dest folder : " + dest); 
-                var calc = CalcDir(dest);
+
+                var workingPath = udir.FullName;
+                SimpleLogger.SimpleLog.Info("workingPath folder : " + workingPath); 
+                var calc = CalcDir(workingPath);
                 SimpleLogger.SimpleLog.Info("calc dir : " + calc.name + "--" + calc.docs); 
                 if (WriteToExcel(calc))
                 {
                     SimpleLogger.SimpleLog.Info("after write to excel");
-                    var info = await UploadToPortalAsync(dest, calc, bLineID);
+                    var info = await UploadToPortalAsync(workingPath, calc, bLineID);
                     if (info)
                     {
                         SimpleLogger.SimpleLog.Info("after upload");
@@ -90,6 +90,7 @@ namespace DigtalOwl_Upload
                         };
                         UpdateExcelStatus(newStatus);
                         SimpleLogger.SimpleLog.Info("after update status");
+                        var dest = Path.Combine(adir, udir.Name);
                         Directory.Move(udir.FullName, dest);
                         SimpleLogger.SimpleLog.Info("after directory move to archive");
                     }
