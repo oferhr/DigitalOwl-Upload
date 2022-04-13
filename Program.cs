@@ -154,7 +154,7 @@ namespace DigtalOwl_Upload
             catch (Exception ex)
             {
 
-                SimpleLogger.SimpleLog.Info("Error while starting process to case. Case ID - " + name);
+                SimpleLogger.SimpleLog.Info("Error while starting process to case. Case ID - " + caseId + " ------- " + "https://api.digitalowl.app/cases/" + caseId + "/process");
                 SimpleLogger.SimpleLog.Log(ex);
                 BuildError(name, "Error while starting process to case. - " + ex.Message);
                 return false;
