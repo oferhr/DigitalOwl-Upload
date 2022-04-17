@@ -99,7 +99,7 @@ namespace DigtalOwl_Upload
             }
         }
 
-        private static async Task<bool> UploadToPortalAsync(string dest, DirData calc, string bLineID)
+        private static async Task<bool> UploadToPortalAsync(string dir, DirData calc, string bLineID)
         {
             var caseId = await GetCaseID(calc.name);
             SimpleLogger.SimpleLog.Info("in UploadToPortalAsync, case id : " + caseId);
@@ -116,7 +116,7 @@ namespace DigtalOwl_Upload
                 SimpleLogger.SimpleLog.Info("Case is not uploaded. Case ID - " + calc.name);
                 return false;
             }
-            var uploads = await UploadFiles(calc.name, caseId, dest);
+            var uploads = await UploadFiles(calc.name, caseId, dir);
             if (!uploads)
             {
                 SimpleLogger.SimpleLog.Info("Failed to upload files to case. Case ID - " + calc.name);
@@ -202,12 +202,13 @@ namespace DigtalOwl_Upload
                 return "ERROR";
             }
         }
-        private static async Task<bool> UploadFiles(string name, string caseId, string dest)
+        private static async Task<bool> UploadFiles(string name, string caseId, string xdir)
         {
             try
             {
-                var dir = new DirectoryInfo(dest);
+                var dir = new DirectoryInfo(xdir);
                 var files = dir.GetFiles().ToList();
+                SimpleLogger.SimpleLog.Info("uploading " + files.Count() + " files from folder - " + dir.FullName + " to case id - " + caseId);
                 for (int i = 0; i < files.Count(); i++)
                 {
                     var file = files[i];
@@ -230,6 +231,7 @@ namespace DigtalOwl_Upload
                    
 
                 }
+                SimpleLogger.SimpleLog.Info("uploaded " + files.Count() + " files to case id - " + caseId);
                 return true;
             }
             catch (Exception ex)
