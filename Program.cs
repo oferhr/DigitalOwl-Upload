@@ -133,6 +133,7 @@ namespace DigtalOwl_Upload
         {
             try
             {
+                SimpleLogger.SimpleLog.Info("processing case . Case ID - " + caseId);
                 using (var client = new HttpClient())
                 {
                     var request = new HttpRequestMessage()
@@ -147,6 +148,7 @@ namespace DigtalOwl_Upload
                     {
                         response.EnsureSuccessStatusCode();
                     }
+                    SimpleLogger.SimpleLog.Info("processed case . Case ID - " + caseId);
                     return true;
                 }
                     
