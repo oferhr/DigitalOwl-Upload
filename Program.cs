@@ -20,6 +20,7 @@ namespace DigtalOwl_Upload
         private static string archiveDir;
         private static string excelFile;
         private static string CurrentBLine;
+        private static int excelRow;
         private static string KEY = "eyJjbGllbnRfaWQiOiI0dzFPNUlJTE9GajdSajhvckZqTkJvR3Z4RVkwNlhUQyIsImNsaWVudF9zZWNyZXQiOiJsYWNBcFd0VTFHeXRfSVNlVGZCZVdweGRBRVJ3NG94Zm9EWkNvZmw0NjI2N3p1Q3ZSRUFTRjdpSEFDWDRnSmIzIiwiYXVkaWVuY2UiOiJodHRwczovL2FwaS5kaWdpdGFsb3dsLmFwcCIsImdyYW50X3R5cGUiOiJjbGllbnRfY3JlZGVudGlhbHMifQ==";
         private static Dictionary<string, string> bLines = new Dictionary<string, string>
         {
@@ -74,10 +75,13 @@ namespace DigtalOwl_Upload
                 var workingPath = udir.FullName;
                 SimpleLogger.SimpleLog.Info("workingPath folder : " + workingPath); 
                 var calc = CalcDir(workingPath);
-                SimpleLogger.SimpleLog.Info("calc dir : " + calc.name + "--" + calc.docs); 
-                if (WriteToExcel(calc))
+                SimpleLogger.SimpleLog.Info("calc dir : " + calc.name + "--" + calc.docs);
+                excelRow = WriteToExcel(calc);
+                SimpleLogger.SimpleLog.Info("excel row - " + excelRow);
+                if (excelRow > 0)
                 {
                     SimpleLogger.SimpleLog.Info("after write to excel");
+                    
                     var info = await UploadToPortalAsync(workingPath, calc, bLineID);
                     if (info)
                     {
@@ -381,18 +385,20 @@ namespace DigtalOwl_Upload
                 xlApp.Visible = false;
                 xlWorkbook = xlApp.Workbooks.Open(excelFile);
                 xlWorksheet = (Excel._Worksheet)xlWorkbook.ActiveSheet;
-                var lastRow = xlWorksheet.Cells.SpecialCells(Excel.XlCellType.xlCellTypeLastCell, Type.Missing).Row;
+                xlWorksheet.Range[E_REMARK + excelRow, E_REMARK + excelRow].Value2 = data.date;
+                xlWorksheet.Range[E_STATUS + excelRow, E_STATUS + excelRow].Value2 = data.status;
+                //var lastRow = xlWorksheet.Cells.SpecialCells(Excel.XlCellType.xlCellTypeLastCell, Type.Missing).Row;
 
-                for (int i = lastRow; i > 1; i--)
-                {
-                    var name = xlWorksheet.Range[E_NAME + i, E_NAME + i].Value2.ToString();
-                    var status = xlWorksheet.Range[E_STATUS + i, E_STATUS + i].Value2.ToString();
-                    if (name == data.name && status == "רישום")
-                    {
-                        xlWorksheet.Range[E_REMARK + i, E_REMARK + i].Value2 = data.date;
-                        xlWorksheet.Range[E_STATUS + i, E_STATUS + i].Value2 = data.status;
-                    }
-                }
+                //for (int i = lastRow; i > 1; i--)
+                //{
+                //    var name = xlWorksheet.Range[E_NAME + i, E_NAME + i].Value2.ToString();
+                //    var status = xlWorksheet.Range[E_STATUS + i, E_STATUS + i].Value2.ToString();
+                //    if (name == data.name && status == "רישום")
+                //    {
+                //        xlWorksheet.Range[E_REMARK + i, E_REMARK + i].Value2 = data.date;
+                //        xlWorksheet.Range[E_STATUS + i, E_STATUS + i].Value2 = data.status;
+                //    }
+                //}
 
 
 
@@ -442,18 +448,25 @@ namespace DigtalOwl_Upload
                 xlApp.Visible = false;
                 xlWorkbook = xlApp.Workbooks.Open(excelFile);
                 xlWorksheet = (Excel._Worksheet)xlWorkbook.ActiveSheet;
-                var lastRow = xlWorksheet.Cells.SpecialCells(Excel.XlCellType.xlCellTypeLastCell, Type.Missing).Row;
 
-                for (int i = lastRow; i > 1; i--)
-                {
-                    var name = xlWorksheet.Range[E_NAME + i, E_NAME + i].Value2.ToString();
-                    var status = xlWorksheet.Range[E_STATUS + i, E_STATUS + i].Value2.ToString();
-                    if (name == data.name && status == "רישום")
-                    {
-                        xlWorksheet.Range[E_DATEUPLOAD + i, E_DATEUPLOAD + i].Value2 = data.date;
-                        xlWorksheet.Range[E_STATUS + i, E_STATUS + i].Value2 = data.status;
-                    }
-                }
+                SimpleLogger.SimpleLog.Info("updating excel status for row - " + excelRow);
+
+                xlWorksheet.Range[E_DATEUPLOAD + excelRow, E_DATEUPLOAD + excelRow].Value2 = data.date;
+                xlWorksheet.Range[E_STATUS + excelRow, E_STATUS + excelRow].Value2 = data.status;
+
+
+                //var lastRow = xlWorksheet.Cells.SpecialCells(Excel.XlCellType.xlCellTypeLastCell, Type.Missing).Row;
+
+                //for (int i = lastRow; i > 1; i--)
+                //{
+                //    var name = xlWorksheet.Range[E_NAME + i, E_NAME + i].Value2.ToString();
+                //    var status = xlWorksheet.Range[E_STATUS + i, E_STATUS + i].Value2.ToString();
+                //    if (name == data.name && status == "רישום")
+                //    {
+                //        xlWorksheet.Range[E_DATEUPLOAD + i, E_DATEUPLOAD + i].Value2 = data.date;
+                //        xlWorksheet.Range[E_STATUS + i, E_STATUS + i].Value2 = data.status;
+                //    }
+                //}
 
 
                
@@ -492,7 +505,7 @@ namespace DigtalOwl_Upload
                 }
             }
         }
-        static bool WriteToExcel(DirData data)
+        static int WriteToExcel(DirData data)
         {
             Excel._Worksheet xlWorksheet = null;
             Excel.Workbook xlWorkbook = null;
@@ -529,7 +542,7 @@ namespace DigtalOwl_Upload
                 xlWorkbook.Save();
                 xlWorkbook.Close();
                 xlApp.Quit();
-                return true;
+                return row;
 
             }
             catch (Exception ex)
@@ -561,7 +574,7 @@ namespace DigtalOwl_Upload
                     Marshal.ReleaseComObject(xlApp);
                 }
             }
-            return false;
+            return -1;
         }
         static string FormatExcelDate(DateTime dt)
         {
@@ -597,7 +610,6 @@ namespace DigtalOwl_Upload
         public string docs { get; set; }
         public string status { get; set; }
         public string remark { get; set; }
-
 
     }
     public class Case
