@@ -49,21 +49,12 @@ namespace DigtalOwl_Upload
                 Directory.CreateDirectory(archiveDir);
             }
             var upload = new DirectoryInfo(uploadDir);
-            var udirs = upload.GetDirectories();
+            var clientDirs = upload.GetDirectories();
 
 
-            string bLineID;
-            if (!bLines.TryGetValue(CurrentBLine, out bLineID))
-            {
-                bLineID = await GetBLineID(CurrentBLine);
-            }
-            if (bLineID == null || bLineID == "ERROR")
-            {
-                SimpleLogger.SimpleLog.Info("No BuisnessLine exist for provided value");
-                throw new Exception("No BuisnessLine exist for provided value");
-            }
-            SimpleLogger.SimpleLog.Info("available directories count : " + udirs.Length);
-            foreach (var udir in udirs)
+            
+            SimpleLogger.SimpleLog.Info("available client count : " + clientDirs.Length);
+            foreach (var clientDir in clientDirs)
             {
                 var archive = GetArchiveDate();
                 var adir = Path.Combine(archiveDir, archive);
@@ -72,34 +63,46 @@ namespace DigtalOwl_Upload
                     Directory.CreateDirectory(adir);
                 }
 
-                var workingPath = udir.FullName;
-                SimpleLogger.SimpleLog.Info("workingPath folder : " + workingPath); 
-                var calc = CalcDir(workingPath);
-                SimpleLogger.SimpleLog.Info("calc dir : " + calc.name + "--" + calc.docs);
-                excelRow = WriteToExcel(calc);
-                SimpleLogger.SimpleLog.Info("excel row - " + excelRow);
-                if (excelRow > 0)
+                string bLineID = await GetBLine(clientDir);
+
+                var workingDirs = clientDir.GetDirectories();
+                SimpleLogger.SimpleLog.Info("available working directories count : " + workingDirs.Length);
+
+                foreach (var workingDir in workingDirs)
                 {
-                    SimpleLogger.SimpleLog.Info("after write to excel");
-                    
-                    var info = await UploadToPortalAsync(workingPath, calc, bLineID);
-                    if (info)
+                    var workingPath = workingDir.FullName;
+                    SimpleLogger.SimpleLog.Info("workingPath folder : " + workingPath);
+                    var calc = CalcDir(workingPath, clientDir.Name);
+                    SimpleLogger.SimpleLog.Info("calc dir : " + calc.name + "--" + calc.docs);
+                    excelRow = WriteToExcel(calc);
+                    SimpleLogger.SimpleLog.Info("excel row - " + excelRow);
+                    if (excelRow > 0)
                     {
-                        SimpleLogger.SimpleLog.Info("after upload");
-                        var newStatus = new DirData
+                        SimpleLogger.SimpleLog.Info("after write to excel");
+
+                        var info = await UploadToPortalAsync(workingPath, calc, bLineID);
+                        if (info)
                         {
-                            date = FormatExcelDate(DateTime.Now),
-                            name = calc.name,
-                            status = "העלה"
-                        };
-                        UpdateExcelStatus(newStatus);
-                        SimpleLogger.SimpleLog.Info("after update status");
-                        var dest = Path.Combine(adir, udir.Name);
-                        Directory.Move(udir.FullName, dest);
-                        SimpleLogger.SimpleLog.Info("after directory move to archive");
+                            SimpleLogger.SimpleLog.Info("after upload");
+                            var newStatus = new DirData
+                            {
+                                date = FormatExcelDate(DateTime.Now),
+                                name = calc.name,
+                                status = "העלה"
+                            };
+                            UpdateExcelStatus(newStatus);
+                            SimpleLogger.SimpleLog.Info("after update status");
+                            var dest = Path.Combine(adir, clientDir.Name);
+                            if (!Directory.Exists(dest))
+                            {
+                                Directory.CreateDirectory(dest);
+                            }
+                            dest = Path.Combine(dest, workingDir.Name);
+                            Directory.Move(workingDir.FullName, dest);
+                            SimpleLogger.SimpleLog.Info("after directory move to archive");
+                        }
                     }
                 }
-                
             }
         }
 
@@ -166,7 +169,76 @@ namespace DigtalOwl_Upload
                 return false;
             }
         }
-        private static async Task<string> GetBLineID(string bline)
+        static async Task<string> GetBLine(DirectoryInfo dir)
+        {
+            string bLineID = "NOBLINE";
+
+            var bLineName = dir.Name;
+            Excel._Worksheet xlWorksheet = null;
+            Excel.Workbook xlWorkbook = null;
+            Excel.Application xlApp = null;
+            var excelFileName = Path.GetFileName(excelFile);
+            var bLineExcelFile = excelFile.Replace(excelFileName, "BusinessLine.csv");
+            try
+            {
+                xlApp = new Excel.Application();
+                xlApp.Visible = false;
+                xlWorkbook = xlApp.Workbooks.Open(bLineExcelFile);
+                xlWorksheet = (Excel._Worksheet)xlWorkbook.ActiveSheet;
+                var lastRow = xlWorksheet.Cells.SpecialCells(Excel.XlCellType.xlCellTypeLastCell, Type.Missing).Row;
+                for (int i = 2; i <= lastRow; i++)
+                {
+                    var name = xlWorksheet.Range["A" + i, "A" + i].Value2.ToString();
+                    var bline = xlWorksheet.Range["B" + i, "B" + i].Value2.ToString();
+                    if(name.ToLower() == bLineName.ToLower())
+                    {
+                        if (!bLines.TryGetValue(bline, out bLineID))
+                        {
+                            bLineID = await GetBLineIdFromOwl(bline);
+                        }
+                        if (bLineID == null || bLineID == "ERROR")
+                        {
+                            if(!bLines.TryGetValue(CurrentBLine, out bLineID))
+                            {
+                                return bLineID;
+                            }
+                        }
+                    }
+                }
+                return bLineID;
+            }
+            catch (Exception ex)
+            {
+                SimpleLogger.SimpleLog.Log(ex);
+                xlWorkbook.Close();
+                xlApp.Quit();
+
+            }
+            finally
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+
+                if (xlWorksheet != null)
+                {
+                    Marshal.ReleaseComObject(xlWorksheet);
+                }
+                //close and release
+                if (xlWorkbook != null)
+                {
+                    Marshal.ReleaseComObject(xlWorkbook);
+                }
+
+                if (xlApp != null)
+                {
+                    //quit and release
+
+                    Marshal.ReleaseComObject(xlApp);
+                }
+            }
+            return null;
+        }
+        private static async Task<string> GetBLineIdFromOwl(string bline)
         {
             try
             {
@@ -272,7 +344,13 @@ namespace DigtalOwl_Upload
                         var obj = oData.Children<JObject>().FirstOrDefault(f => f["name"] != null && f["name"].ToString() == name);
                         if (obj != null && obj.Count > 0)
                         {
-                            return obj["id"].ToString();
+                            var cstatus = obj["externalStatus"]?.ToString();
+                            var id = obj["id"].ToString();
+                            if (cstatus == "archived")
+                            {
+                                await unArchiveCase(id, name);
+                            }
+                            return id;
                         }
                         return null;
                     }
@@ -287,6 +365,41 @@ namespace DigtalOwl_Upload
                 return "ERROR";
             }
         }
+
+        private async static Task<bool> unArchiveCase(string caseId, string name)
+        {
+            try
+            {
+                SimpleLogger.SimpleLog.Info("unArchive a case . Case ID - " + caseId);
+                using (var client = new HttpClient())
+                {
+                    var request = new HttpRequestMessage()
+                    {
+                        RequestUri = new Uri("https://api.digitalowl.app/cases/" + caseId + "/unarchived"),
+                        Method = HttpMethod.Put,
+
+                    };
+                    client.DefaultRequestHeaders.Add("Authorization", "Bearer " + KEY);
+
+                    using (var response = await client.SendAsync(request))
+                    {
+                        response.EnsureSuccessStatusCode();
+                    }
+                    SimpleLogger.SimpleLog.Info("unArchive a case . Case ID - " + caseId);
+                    return true;
+                }
+
+            }
+            catch (Exception ex)
+            {
+
+                SimpleLogger.SimpleLog.Info("Error while unArchive a case. Case ID - " + caseId + " ------- " + "https://api.digitalowl.app/cases/" + caseId + "/process");
+                SimpleLogger.SimpleLog.Log(ex);
+                BuildError(name, "Error while unArchive a case. - " + ex.Message);
+                return false;
+            }
+        }
+
         //private static async Task<bool> CheckCaseExist(string name)
         //{
         //    try
@@ -296,11 +409,11 @@ namespace DigtalOwl_Upload
         //        {
         //            RequestUri = new Uri("https://api.digitalowl.app/cases/" + name),
         //            Method = HttpMethod.Get,
-                    
+
         //        };
         //        client.DefaultRequestHeaders.ExpectContinue = false;
         //        client.DefaultRequestHeaders.Add("Authorization", "Bearer " + KEY);
-                
+
         //        using (var response = await client.SendAsync(request))
         //        {
         //            var status = response.StatusCode;
@@ -360,7 +473,7 @@ namespace DigtalOwl_Upload
             
         }
 
-        static DirData CalcDir(string adir)
+        static DirData CalcDir(string adir, string bline)
         {
             var dir = new DirectoryInfo(adir);
             var files = dir.GetFiles("*.pdf", SearchOption.TopDirectoryOnly);
@@ -370,10 +483,12 @@ namespace DigtalOwl_Upload
                 date = FormatExcelDate(DateTime.Now),
                 name = dir.Name,
                 docs = count.ToString(),
-                status = "רישום"
+                status = "רישום",
+                bline = bline
             };
 
         }
+        
         static void ErrorToExcel(DirData data)
         {
             Excel._Worksheet xlWorksheet = null;
@@ -536,6 +651,9 @@ namespace DigtalOwl_Upload
                         case "status":
                             xlWorksheet.Range[E_STATUS + row, E_STATUS + row].Value2 = data?.status;
                             break;
+                        case "bline":
+                            xlWorksheet.Range[E_BLINE + row, E_BLINE + row].Value2 = data?.bline;
+                            break;
                     }
                 }
                 SimpleLogger.SimpleLog.Info("after write to excel property loop");
@@ -597,11 +715,16 @@ namespace DigtalOwl_Upload
         private static string E_NAME = "B";
         private static string E_NUMDOCS = "C";
         private static string E_NUMPAGES = "D";
-        private static string E_STATUS = "E";
-        private static string E_DATEUPLOAD = "F";
-        private static string E_DATEDOWNLOAD = "G";
-        private static string E_CONTINUE = "H";
-        private static string E_REMARK = "I";
+        private static string E_MEDICALDATA = "E";
+        private static string E_HANDWRITTEN = "F";
+        private static string E_STATUS = "G";
+        private static string E_OWLSTATUS = "H";
+        private static string E_DATEUPLOAD = "I";
+        private static string E_DATEDOWNLOAD = "J";
+        private static string E_CONTINUE = "K";
+        private static string E_BLINE = "L";
+        private static string E_REMARK = "M";
+        
     }
     public class DirData
     {
@@ -610,6 +733,7 @@ namespace DigtalOwl_Upload
         public string docs { get; set; }
         public string status { get; set; }
         public string remark { get; set; }
+        public string bline { get; set; }
 
     }
     public class Case
