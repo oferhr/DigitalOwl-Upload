@@ -375,7 +375,7 @@ namespace DigtalOwl_Upload
                 {
                     var request = new HttpRequestMessage()
                     {
-                        RequestUri = new Uri("https://api.digitalowl.app/cases/" + caseId + "/unarchived"),
+                        RequestUri = new Uri("https://api.digitalowl.app/cases/" + caseId + "/unarchive"),
                         Method = HttpMethod.Put,
 
                     };
