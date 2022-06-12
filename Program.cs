@@ -21,6 +21,7 @@ namespace DigtalOwl_Upload
         private static string excelFile;
         private static string CurrentBLine;
         private static int excelRow;
+        private static string ERROR_STATUS = "שגיאה";
         private static string KEY = "eyJjbGllbnRfaWQiOiI0dzFPNUlJTE9GajdSajhvckZqTkJvR3Z4RVkwNlhUQyIsImNsaWVudF9zZWNyZXQiOiJsYWNBcFd0VTFHeXRfSVNlVGZCZVdweGRBRVJ3NG94Zm9EWkNvZmw0NjI2N3p1Q3ZSRUFTRjdpSEFDWDRnSmIzIiwiYXVkaWVuY2UiOiJodHRwczovL2FwaS5kaWdpdGFsb3dsLmFwcCIsImdyYW50X3R5cGUiOiJjbGllbnRfY3JlZGVudGlhbHMifQ==";
         private static Dictionary<string, string> bLines = new Dictionary<string, string>
         {
@@ -171,7 +172,7 @@ namespace DigtalOwl_Upload
         }
         static async Task<string> GetBLine(DirectoryInfo dir)
         {
-            string bLineID = "NOBLINE";
+            string bLineID = bLines[CurrentBLine];
 
             var bLineName = dir.Name;
             Excel._Worksheet xlWorksheet = null;
@@ -198,10 +199,7 @@ namespace DigtalOwl_Upload
                         }
                         if (bLineID == null || bLineID == "ERROR")
                         {
-                            if(!bLines.TryGetValue(CurrentBLine, out bLineID))
-                            {
-                                return bLineID;
-                            }
+                            return bLines[CurrentBLine];
                         }
                     }
                 }
@@ -633,6 +631,16 @@ namespace DigtalOwl_Upload
                 xlWorksheet = (Excel._Worksheet)xlWorkbook.ActiveSheet;
                 var lastRow = xlWorksheet.Cells.SpecialCells(Excel.XlCellType.xlCellTypeLastCell, Type.Missing).Row;
                 var row = lastRow + 1;
+                for (int i = 2; i <= lastRow; i++)
+                {
+                    var status = xlWorksheet.Range[E_STATUS + i, E_STATUS + i].Value2;
+                    var name = xlWorksheet.Range[E_NAME + i, E_NAME + i].Value2;
+                    if(name == data?.name && status == ERROR_STATUS)
+                    {
+                        row = i;
+                    }
+                }
+                
 
                 SimpleLogger.SimpleLog.Info("before write to excel property loop");
                 foreach (PropertyInfo prop in data.GetType().GetProperties())
@@ -707,7 +715,7 @@ namespace DigtalOwl_Upload
             {
                 remark = msg,
                 name = name,
-                status = "שגיאה"
+                status = ERROR_STATUS
             };
             ErrorToExcel(errorStatus);
         }
