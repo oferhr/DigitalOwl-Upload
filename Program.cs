@@ -109,7 +109,7 @@ namespace DigtalOwl_Upload
 
         private static async Task<bool> UploadToPortalAsync(string dir, DirData calc, string bLineID)
         {
-            var caseId = await GetCaseID(calc.name);
+            var caseId = await GetCaseID(calc.name, bLineID);
             SimpleLogger.SimpleLog.Info("in UploadToPortalAsync, case id : " + caseId);
             if (caseId == "ERROR")
             {
@@ -193,9 +193,12 @@ namespace DigtalOwl_Upload
                     var bline = xlWorksheet.Range["B" + i, "B" + i].Value2.ToString();
                     if(name.ToLower() == bLineName.ToLower())
                     {
+                        SimpleLogger.SimpleLog.Info("Trying to get bline from defaults. current bline = " + bLineID);
                         if (!bLines.TryGetValue(bline, out bLineID))
                         {
+                            SimpleLogger.SimpleLog.Info("Getting Line from Owl");
                             bLineID = await GetBLineIdFromOwl(bline);
+                            SimpleLogger.SimpleLog.Info("After getting bline from owl. current bline = " + bLineID);
                         }
                         if (bLineID == null || bLineID == "ERROR")
                         {
@@ -203,6 +206,9 @@ namespace DigtalOwl_Upload
                         }
                     }
                 }
+                xlWorkbook.Save();
+                xlWorkbook.Close();
+                xlApp.Quit();
                 return bLineID;
             }
             catch (Exception ex)
@@ -316,7 +322,7 @@ namespace DigtalOwl_Upload
                 return false;
             }
         }
-        private static async Task<string> GetCaseID(string name)
+        private static async Task<string> GetCaseID(string name, string bLineID)
         {
             try
             {
@@ -339,7 +345,7 @@ namespace DigtalOwl_Upload
                         {
                             return null;
                         }
-                        var obj = oData.Children<JObject>().FirstOrDefault(f => f["name"] != null && f["name"].ToString() == name);
+                        var obj = oData.Children<JObject>().FirstOrDefault(f => f["name"] != null && f["name"].ToString() == name && f["businessLineId"].ToString() == bLineID);
                         if (obj != null && obj.Count > 0)
                         {
                             var cstatus = obj["externalStatus"]?.ToString();
@@ -633,8 +639,8 @@ namespace DigtalOwl_Upload
                 var row = lastRow + 1;
                 for (int i = 2; i <= lastRow; i++)
                 {
-                    var status = xlWorksheet.Range[E_STATUS + i, E_STATUS + i].Value2;
-                    var name = xlWorksheet.Range[E_NAME + i, E_NAME + i].Value2;
+                    var status = xlWorksheet.Range[E_STATUS + i, E_STATUS + i].Value2.ToString();
+                    var name = xlWorksheet.Range[E_NAME + i, E_NAME + i].Value2.ToString();
                     if(name == data?.name && status == ERROR_STATUS)
                     {
                         row = i;
