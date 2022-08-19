@@ -21,8 +21,10 @@ namespace DigtalOwl_Upload
         private static string excelFile;
         private static string CurrentBLine;
         private static int excelRow;
+        private static string baseURL;
+        private static string keyFile;
         private static string ERROR_STATUS = "שגיאה";
-        private static string KEY = "eyJjbGllbnRfaWQiOiI0dzFPNUlJTE9GajdSajhvckZqTkJvR3Z4RVkwNlhUQyIsImNsaWVudF9zZWNyZXQiOiJsYWNBcFd0VTFHeXRfSVNlVGZCZVdweGRBRVJ3NG94Zm9EWkNvZmw0NjI2N3p1Q3ZSRUFTRjdpSEFDWDRnSmIzIiwiYXVkaWVuY2UiOiJodHRwczovL2FwaS5kaWdpdGFsb3dsLmFwcCIsImdyYW50X3R5cGUiOiJjbGllbnRfY3JlZGVudGlhbHMifQ==";
+        private static string KEY = String.Empty;
         private static Dictionary<string, string> bLines = new Dictionary<string, string>
         {
             {"defBlName", "914aa316-2243-4efb-aeea-a61758772b38" },
@@ -36,8 +38,11 @@ namespace DigtalOwl_Upload
             archiveDir = ConfigurationManager.AppSettings["archivedDir"];
             excelFile = ConfigurationManager.AppSettings["excelFile"];
             CurrentBLine = ConfigurationManager.AppSettings["buisnessLine"];
+            baseURL = ConfigurationManager.AppSettings["baseUrl"];
+            keyFile = ConfigurationManager.AppSettings["keyFile"];
 
-            if (string.IsNullOrEmpty(uploadDir) || string.IsNullOrEmpty(archiveDir) || string.IsNullOrEmpty(excelFile) || string.IsNullOrEmpty(CurrentBLine))
+            if (string.IsNullOrEmpty(uploadDir) || string.IsNullOrEmpty(archiveDir) || string.IsNullOrEmpty(excelFile) || 
+                string.IsNullOrEmpty(CurrentBLine) || string.IsNullOrEmpty(baseURL) || string.IsNullOrEmpty(keyFile))
             {
                 throw new Exception("פרטי קונפיגורציה חסרים");
             }
@@ -49,6 +54,14 @@ namespace DigtalOwl_Upload
             {
                 Directory.CreateDirectory(archiveDir);
             }
+
+
+            KEY = GetKey();
+            if (string.IsNullOrEmpty(KEY))
+            {
+                throw new Exception("בעיה בזמן נסיון לקבל את מחרוזת הרישיו - אנא בדוק את קובץ הלוג");
+            }
+
             var upload = new DirectoryInfo(uploadDir);
             var clientDirs = upload.GetDirectories();
 
@@ -146,7 +159,7 @@ namespace DigtalOwl_Upload
                 {
                     var request = new HttpRequestMessage()
                     {
-                        RequestUri = new Uri("https://api.digitalowl.app/cases/" + caseId + "/process"),
+                        RequestUri = new Uri(baseURL + "/cases/" + caseId + "/process"),
                         Method = HttpMethod.Post,
 
                     };
@@ -164,7 +177,7 @@ namespace DigtalOwl_Upload
             catch (Exception ex)
             {
 
-                SimpleLogger.SimpleLog.Info("Error while starting process to case. Case ID - " + caseId + " ------- " + "https://api.digitalowl.app/cases/" + caseId + "/process");
+                SimpleLogger.SimpleLog.Info("Error while starting process to case. Case ID - " + caseId + " ------- " + baseURL + "/cases/" + caseId + "/process");
                 SimpleLogger.SimpleLog.Log(ex);
                 BuildError(name, "Error while starting process to case. - " + ex.Message);
                 return false;
@@ -250,7 +263,7 @@ namespace DigtalOwl_Upload
                 {
                     var request = new HttpRequestMessage()
                     {
-                        RequestUri = new Uri("https://api.digitalowl.app/businessLines"),
+                        RequestUri = new Uri(baseURL + "/businessLines"),
                         Method = HttpMethod.Get,
 
                     };
@@ -302,7 +315,7 @@ namespace DigtalOwl_Upload
                         client.DefaultRequestHeaders.Add("Authorization", "Bearer " + KEY);
                         client.DefaultRequestHeaders.Add("x-case-id", caseId);
                         client.DefaultRequestHeaders.Add("x-file-name", fileName);
-                        using (var post = await client.PostAsync("https://api.digitalowl.app/documents", sfile))
+                        using (var post = await client.PostAsync("/documents", sfile))
                         {
                             post.EnsureSuccessStatusCode();
                         }
@@ -330,7 +343,7 @@ namespace DigtalOwl_Upload
                 {
                     var request = new HttpRequestMessage()
                     {
-                        RequestUri = new Uri("https://api.digitalowl.app/cases?search=" + name),
+                        RequestUri = new Uri(baseURL + "/cases?search=" + name),
                         Method = HttpMethod.Get,
 
                     };
@@ -379,7 +392,7 @@ namespace DigtalOwl_Upload
                 {
                     var request = new HttpRequestMessage()
                     {
-                        RequestUri = new Uri("https://api.digitalowl.app/cases/" + caseId + "/unarchive"),
+                        RequestUri = new Uri(baseURL + "/cases/" + caseId + "/unarchive"),
                         Method = HttpMethod.Put,
 
                     };
@@ -397,7 +410,7 @@ namespace DigtalOwl_Upload
             catch (Exception ex)
             {
 
-                SimpleLogger.SimpleLog.Info("Error while unArchive a case. Case ID - " + caseId + " ------- " + "https://api.digitalowl.app/cases/" + caseId + "/process");
+                SimpleLogger.SimpleLog.Info("Error while unArchive a case. Case ID - " + caseId + " ------- " + baseURL + "/cases/" + caseId + "/process");
                 SimpleLogger.SimpleLog.Log(ex);
                 BuildError(name, "Error while unArchive a case. - " + ex.Message);
                 return false;
@@ -411,7 +424,7 @@ namespace DigtalOwl_Upload
         //        var client = new HttpClient();
         //        var request = new HttpRequestMessage()
         //        {
-        //            RequestUri = new Uri("https://api.digitalowl.app/cases/" + name),
+        //            RequestUri = new Uri(baseURL + "/cases/" + name),
         //            Method = HttpMethod.Get,
 
         //        };
@@ -440,7 +453,7 @@ namespace DigtalOwl_Upload
                 var client = new HttpClient();
                 var request = new HttpRequestMessage()
                 {
-                    RequestUri = new Uri("https://api.digitalowl.app/cases"),
+                    RequestUri = new Uri(baseURL + "/cases"),
                     Method = HttpMethod.Post,
                 };
                 request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -639,8 +652,8 @@ namespace DigtalOwl_Upload
                 var row = lastRow + 1;
                 for (int i = 2; i <= lastRow; i++)
                 {
-                    var status = xlWorksheet.Range[E_STATUS + i, E_STATUS + i].Value2.ToString();
-                    var name = xlWorksheet.Range[E_NAME + i, E_NAME + i].Value2.ToString();
+                    var status = xlWorksheet.Range[E_STATUS + i, E_STATUS + i].Value2.ToString().Trim();
+                    var name = xlWorksheet.Range[E_NAME + i, E_NAME + i].Value2.ToString().Trim();
                     if(name == data?.name && status == ERROR_STATUS)
                     {
                         row = i;
@@ -657,7 +670,7 @@ namespace DigtalOwl_Upload
                             xlWorksheet.Range[E_DATE + row, E_DATE + row].Value2 = data?.date;
                             break;
                         case "name":
-                            xlWorksheet.Range[E_NAME + row, E_NAME + row].Value2 = data?.name;
+                            xlWorksheet.Range[E_NAME + row, E_NAME + row].Value2 = data?.name.Trim();
                             break;
                         case "docs":
                             xlWorksheet.Range[E_NUMDOCS + row, E_NUMDOCS + row].Value2 = data?.docs;
@@ -666,7 +679,7 @@ namespace DigtalOwl_Upload
                             xlWorksheet.Range[E_STATUS + row, E_STATUS + row].Value2 = data?.status;
                             break;
                         case "bline":
-                            xlWorksheet.Range[E_BLINE + row, E_BLINE + row].Value2 = data?.bline;
+                            xlWorksheet.Range[E_BLINE + row, E_BLINE + row].Value2 = data?.bline.Trim();
                             break;
                     }
                 }
@@ -725,6 +738,30 @@ namespace DigtalOwl_Upload
             };
             ErrorToExcel(errorStatus);
         }
+
+        private static string GetKey()
+        {
+            try
+            {
+                string filePassword = "xDzp3Z^Seg3yQA6s";
+                string key = string.Empty;
+                var word = new Microsoft.Office.Interop.Word.Application();
+                var doc = word.Documents.Open(keyFile, ReadOnly: true, PasswordDocument: filePassword);
+                foreach (Microsoft.Office.Interop.Word.Paragraph objParagraph in doc.Paragraphs)
+                {
+                    key = objParagraph.Range.Text.Trim();
+                }
+                return key;
+            }
+            catch (Exception ex)
+            {
+                SimpleLogger.SimpleLog.Info("Error while trying to get the license key from file - " + ex.Message);
+                SimpleLogger.SimpleLog.Log(ex);
+                return string.Empty;
+            }
+        }
+
+
         private static string E_DATE = "A";
         private static string E_NAME = "B";
         private static string E_NUMDOCS = "C";
