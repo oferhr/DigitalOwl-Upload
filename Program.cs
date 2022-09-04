@@ -315,7 +315,7 @@ namespace DigtalOwl_Upload
                         client.DefaultRequestHeaders.Add("Authorization", "Bearer " + KEY);
                         client.DefaultRequestHeaders.Add("x-case-id", caseId);
                         client.DefaultRequestHeaders.Add("x-file-name", fileName);
-                        using (var post = await client.PostAsync("/documents", sfile))
+                        using (var post = await client.PostAsync(baseURL + "/documents", sfile))
                         {
                             post.EnsureSuccessStatusCode();
                         }
@@ -351,6 +351,7 @@ namespace DigtalOwl_Upload
 
                     using (var response = await client.SendAsync(request))
                     {
+                        response.EnsureSuccessStatusCode();
                         var status = response.StatusCode;
                         var data = await response.Content.ReadAsStringAsync();
                         var oData = (JArray)JsonConvert.DeserializeObject(data);
@@ -741,16 +742,20 @@ namespace DigtalOwl_Upload
 
         private static string GetKey()
         {
+            Microsoft.Office.Interop.Word.Application word = null;
+            Microsoft.Office.Interop.Word.Document doc = null;
+
             try
             {
-                string filePassword = "xDzp3Z^Seg3yQA6s";
                 string key = string.Empty;
-                var word = new Microsoft.Office.Interop.Word.Application();
-                var doc = word.Documents.Open(keyFile, ReadOnly: true, PasswordDocument: filePassword);
+                word = new Microsoft.Office.Interop.Word.Application();
+                doc = word.Documents.Open(keyFile);
                 foreach (Microsoft.Office.Interop.Word.Paragraph objParagraph in doc.Paragraphs)
                 {
                     key = objParagraph.Range.Text.Trim();
                 }
+                doc.Close();
+                word.Quit();
                 return key;
             }
             catch (Exception ex)
@@ -758,6 +763,21 @@ namespace DigtalOwl_Upload
                 SimpleLogger.SimpleLog.Info("Error while trying to get the license key from file - " + ex.Message);
                 SimpleLogger.SimpleLog.Log(ex);
                 return string.Empty;
+            }
+            finally
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+
+                if (doc != null)
+                {
+                    Marshal.ReleaseComObject(doc);
+                }
+
+                if (word != null)
+                {
+                    Marshal.ReleaseComObject(word);
+                }
             }
         }
 
