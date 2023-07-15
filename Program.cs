@@ -304,7 +304,15 @@ namespace DigtalOwl_Upload
                 SimpleLogger.SimpleLog.Info("uploading " + files.Count() + " files from folder - " + dir.FullName + " to case id - " + caseId);
                 for (int i = 0; i < files.Count(); i++)
                 {
+                   
+
                     var file = files[i];
+                   
+                    var fileExt = Path.GetExtension(file.FullName);
+                    if(fileExt.ToLower() == ".ini")
+                    {
+                        continue;
+                    }
                     var fileName = Path.GetFileNameWithoutExtension(file.FullName);
                     using (var client = new HttpClient())
                     {
