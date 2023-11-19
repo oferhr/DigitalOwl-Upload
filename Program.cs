@@ -82,8 +82,25 @@ namespace DigtalOwl_Upload
                 var workingDirs = clientDir.GetDirectories();
                 SimpleLogger.SimpleLog.Info("available working directories count : " + workingDirs.Length);
 
-                foreach (var workingDir in workingDirs)
+                foreach (var workingDir1 in workingDirs)
                 {
+                    long date = 0;
+                    DirectoryInfo workingDir = workingDir1;
+                    var name = workingDir1.Name;
+                    var splits = name.Split('_');
+                    if (splits.Length == 2)
+                    {
+                        DateTime newdate;
+                        var newName = splits[0];
+                        if (DateTime.TryParseExact(splits[1], "ddMMyyyy", null, System.Globalization.DateTimeStyles.None, out newdate))
+                        {
+                            TimeSpan epochTicks = new TimeSpan(new DateTime(1970, 1, 1).Ticks);
+                            TimeSpan unixTicks = new TimeSpan(newdate.Ticks) - epochTicks;
+                            date = (long)unixTicks.TotalMilliseconds;
+                        }
+                        workingDir = new DirectoryInfo(Path.Combine(workingDir1.Parent.FullName, newName));
+                        Directory.Move(workingDir1.FullName, workingDir.FullName);
+                    }
                     var workingPath = workingDir.FullName;
                     SimpleLogger.SimpleLog.Info("workingPath folder : " + workingPath);
                     var calc = CalcDir(workingPath, clientDir.Name);
@@ -94,7 +111,7 @@ namespace DigtalOwl_Upload
                     {
                         SimpleLogger.SimpleLog.Info("after write to excel");
 
-                        var info = await UploadToPortalAsync(workingPath, calc, bLineID);
+                        var info = await UploadToPortalAsync(workingPath, calc, bLineID, date);
                         if (info)
                         {
                             SimpleLogger.SimpleLog.Info("after upload");
@@ -120,7 +137,7 @@ namespace DigtalOwl_Upload
             }
         }
 
-        private static async Task<bool> UploadToPortalAsync(string dir, DirData calc, string bLineID)
+        private static async Task<bool> UploadToPortalAsync(string dir, DirData calc, string bLineID, long date)
         {
             var caseId = await GetCaseID(calc.name, bLineID);
             SimpleLogger.SimpleLog.Info("in UploadToPortalAsync, case id : " + caseId);
@@ -130,7 +147,7 @@ namespace DigtalOwl_Upload
             }
             if (caseId == null)
             {
-                caseId = await CreateNewCase(calc.name, bLineID);
+                caseId = await CreateNewCase(calc.name, bLineID, date);
             }
             if (caseId == null)
             {
@@ -455,7 +472,7 @@ namespace DigtalOwl_Upload
 
 
         //}
-        private static async Task<string> CreateNewCase(string name, string bLineID)
+        private static async Task<string> CreateNewCase(string name, string bLineID, long date)
         {
             try
             {
@@ -467,12 +484,16 @@ namespace DigtalOwl_Upload
                 };
                 request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                 client.DefaultRequestHeaders.Add("Authorization", "Bearer " + KEY);
-                var json = JsonConvert.SerializeObject(new Case
+                var currentCase = new Case
                 {
                     name = name,
                     businessLineId = bLineID
-
-                });
+                };
+                if (date > 0)
+                {
+                    currentCase.keyDecisionDate = date;
+                }
+                var json = JsonConvert.SerializeObject(currentCase);
 
                 HttpContent _Body = new StringContent(json);
                 _Body.Headers.ContentType = new MediaTypeHeaderValue("application/json");
@@ -819,5 +840,6 @@ namespace DigtalOwl_Upload
     {
         public string name { get; set; }
         public string businessLineId { get; set; }
+        public long keyDecisionDate { get; set; }
     }
 }
