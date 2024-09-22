@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using Microsoft.Office.Interop.Excel;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
@@ -9,6 +10,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading.Tasks;
 using Excel = Microsoft.Office.Interop.Excel;
 
@@ -184,7 +186,12 @@ namespace DigtalOwl_Upload
 
                     using (var response = await client.SendAsync(request))
                     {
-                        response.EnsureSuccessStatusCode();
+                        //response.EnsureSuccessStatusCode();
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            var body = await response.Content.ReadAsStringAsync();
+                            HandleHttpError(response, body, request, name);
+                        }
                     }
                     SimpleLogger.SimpleLog.Info("processed case . Case ID - " + caseId);
                     return true;
@@ -342,7 +349,12 @@ namespace DigtalOwl_Upload
                         client.DefaultRequestHeaders.Add("x-file-name", fileName);
                         using (var post = await client.PostAsync(baseURL + "/documents", sfile))
                         {
-                            post.EnsureSuccessStatusCode();
+                            //post.EnsureSuccessStatusCode();
+                            if (!post.IsSuccessStatusCode)
+                            {
+                                var body = await post.Content.ReadAsStringAsync();
+                                HandleHttpError(post, body, null, name);
+                            }
                         }
                     }
                         
@@ -376,7 +388,14 @@ namespace DigtalOwl_Upload
 
                     using (var response = await client.SendAsync(request))
                     {
-                        response.EnsureSuccessStatusCode();
+                        //response.EnsureSuccessStatusCode();
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            var body = await response.Content.ReadAsStringAsync();
+                            HandleHttpError(response, body, request, name);
+                            return "ERROR";
+                        }
+                        
                         var status = response.StatusCode;
                         var data = await response.Content.ReadAsStringAsync();
                         var oData = (JArray)JsonConvert.DeserializeObject(data);
@@ -426,7 +445,13 @@ namespace DigtalOwl_Upload
 
                     using (var response = await client.SendAsync(request))
                     {
-                        response.EnsureSuccessStatusCode();
+                        //response.EnsureSuccessStatusCode();
+                        
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            var body = await response.Content.ReadAsStringAsync();
+                            HandleHttpError(response, body, request, name);
+                        }
                     }
                     SimpleLogger.SimpleLog.Info("unArchive a case . Case ID - " + caseId);
                     return true;
@@ -501,16 +526,25 @@ namespace DigtalOwl_Upload
 
 
 
-
+                
                 using (var response = await client.SendAsync(request))
                 {
-                    response.EnsureSuccessStatusCode();
+                    //response.EnsureSuccessStatusCode();
                     var body = await response.Content.ReadAsStringAsync();
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        HandleHttpError(response, body, request, name);
+                        return null;
+                    }
                     var obj = (JObject)JsonConvert.DeserializeObject(body);
                     return obj["id"].ToString();
+
                 }
+                
+                
             }
-            catch(Exception ex)
+            
+            catch (Exception ex)
             {
                 SimpleLogger.SimpleLog.Info("Failed to create a case with DigitalOwl. Case ID - " + name);
                 SimpleLogger.SimpleLog.Log(ex);
@@ -519,7 +553,79 @@ namespace DigtalOwl_Upload
             }
             
         }
+        private static void HandleHttpError(HttpResponseMessage response, string body, HttpRequestMessage request, string name)
+        {
+            try
+            {
+                var errorMessage = new StringBuilder();
+                // Status code and reason phrase
+                var statusCode = (int)response.StatusCode;
+                var reasonPhrase = response.ReasonPhrase;
 
+                // Response headers
+                var responseHeaders = response.Headers;
+                var contentHeaders = response.Content.Headers;
+
+                // Attempt to parse the response body as JSON
+                string errorDetails = body;
+                try
+                {
+                    var errorObject = JObject.Parse(body);
+                    errorDetails = errorObject.ToString();
+                }
+                catch
+                {
+                    // If parsing fails, keep the raw body
+                }
+
+                // Build a detailed error message
+
+                errorMessage.AppendLine($"Request failed with status code {statusCode} ({reasonPhrase}).");
+                if(request != null)
+                {
+                    errorMessage.AppendLine($"Request Method: {request.Method}");
+                    errorMessage.AppendLine($"Request URI: {request.RequestUri}");
+
+                    // Include request headers
+                    errorMessage.AppendLine("Request Headers:");
+                    foreach (var header in request.Headers)
+                    {
+                        errorMessage.AppendLine($"{header.Key}: {string.Join(", ", header.Value)}");
+                    }
+                }
+                
+
+                // Include response headers
+                errorMessage.AppendLine("Response Headers:");
+                foreach (var header in responseHeaders)
+                {
+                    errorMessage.AppendLine($"{header.Key}: {string.Join(", ", header.Value)}");
+                }
+
+                // Include content headers
+                errorMessage.AppendLine("Content Headers:");
+                foreach (var header in contentHeaders)
+                {
+                    errorMessage.AppendLine($"{header.Key}: {string.Join(", ", header.Value)}");
+                }
+
+                // Include the response content
+                errorMessage.AppendLine("Response Content:");
+                errorMessage.AppendLine(errorDetails);
+
+                // Throw an exception with the detailed error message
+                SimpleLogger.SimpleLog.Info("Http error when trying to create a case with DigitalOwl. Case ID - " + name);
+                SimpleLogger.SimpleLog.Error(errorMessage.ToString());
+                BuildError(name, "Http Error trying to create a case with DigitalOwl. - " + errorDetails);
+            }
+            catch (Exception ex)
+            {
+                SimpleLogger.SimpleLog.Info("Error with HandleHttpError method");
+                SimpleLogger.SimpleLog.Log(ex);
+                BuildError(name, "Failed to create a case with DigitalOwl. - " + ex.Message);
+            }
+            
+        }
         static DirData CalcDir(string adir, string bline)
         {
             var dir = new DirectoryInfo(adir);
