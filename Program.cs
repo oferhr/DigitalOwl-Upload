@@ -342,7 +342,7 @@ namespace DigtalOwl_Upload
                     {
                         FileInfo f = new FileInfo(file.FullName);
                         var sfile = new StreamContent(File.OpenRead(file.FullName));
-                        sfile.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
+                        sfile.Headers.ContentType = new MediaTypeHeaderValue(GetMimeType(Path.GetExtension(file.FullName)));
                         sfile.Headers.ContentLength = f.Length;
                         client.DefaultRequestHeaders.Add("Authorization", "Bearer " + KEY);
                         client.DefaultRequestHeaders.Add("x-case-id", caseId);
@@ -370,6 +370,33 @@ namespace DigtalOwl_Upload
                 SimpleLogger.SimpleLog.Log(ex);
                 BuildError(name, "Failed to upload documents. - " + ex.Message);
                 return false;
+            }
+        }
+        public static string GetMimeType(string fileExtension)
+        {
+            // Normalize the extension by removing the dot if present and converting to lowercase
+            fileExtension = fileExtension.TrimStart('.').ToLower();
+
+            switch (fileExtension)
+            {
+                case "jpeg":
+                    return "image/jpeg";
+                case "jpg":
+                    return "image/jpeg";
+                case "bmp":
+                    return "image/bmp";
+                case "pdf":
+                    return "application/pdf";
+                case "doc":
+                    return "application/msword";
+                case "docx":
+                    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                case "tif":
+                    return "image/tiff";
+                case "tiff":
+                    return "image/tiff";
+                default:
+                    return "application/pdf";
             }
         }
         private static async Task<string> GetCaseID(string name, string bLineID)
