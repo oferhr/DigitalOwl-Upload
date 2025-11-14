@@ -1,4 +1,6 @@
-﻿using Microsoft.Office.Interop.Excel;
+﻿using Azure.Identity;
+using Azure.Security.KeyVault.Secrets;
+using Microsoft.Office.Interop.Excel;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
@@ -24,7 +26,8 @@ namespace DigtalOwl_Upload
         private static string CurrentBLine;
         private static int excelRow;
         private static string baseURL;
-        private static string keyFile;
+        private static string keyVaultUrl;
+        private static string keyVaultSecretName;
         private static string ERROR_STATUS = "שגיאה";
         private static string KEY = String.Empty;
         private static Dictionary<string, string> bLines = new Dictionary<string, string>
@@ -41,10 +44,12 @@ namespace DigtalOwl_Upload
             excelFile = ConfigurationManager.AppSettings["excelFile"];
             CurrentBLine = ConfigurationManager.AppSettings["buisnessLine"];
             baseURL = ConfigurationManager.AppSettings["baseUrl"];
-            keyFile = ConfigurationManager.AppSettings["keyFile"];
+            keyVaultUrl = ConfigurationManager.AppSettings["KeyVaultUrl"];
+            keyVaultSecretName = ConfigurationManager.AppSettings["KeyVaultSecretName"];
 
-            if (string.IsNullOrEmpty(uploadDir) || string.IsNullOrEmpty(archiveDir) || string.IsNullOrEmpty(excelFile) || 
-                string.IsNullOrEmpty(CurrentBLine) || string.IsNullOrEmpty(baseURL) || string.IsNullOrEmpty(keyFile))
+            if (string.IsNullOrEmpty(uploadDir) || string.IsNullOrEmpty(archiveDir) || string.IsNullOrEmpty(excelFile) ||
+                string.IsNullOrEmpty(CurrentBLine) || string.IsNullOrEmpty(baseURL) ||
+                string.IsNullOrEmpty(keyVaultUrl) || string.IsNullOrEmpty(keyVaultSecretName))
             {
                 throw new Exception("פרטי קונפיגורציה חסרים");
             }
@@ -58,10 +63,10 @@ namespace DigtalOwl_Upload
             }
 
 
-            KEY = GetKey();
+            KEY = await GetKeyFromAzureKeyVaultAsync();
             if (string.IsNullOrEmpty(KEY))
             {
-                throw new Exception("בעיה בזמן נסיון לקבל את מחרוזת הרישיו - אנא בדוק את קובץ הלוג");
+                throw new Exception("בעיה בזמן נסיון לקבל את מחרוזת הרישיו מ-Azure Key Vault - אנא בדוק את קובץ הלוג");
             }
 
             var upload = new DirectoryInfo(uploadDir);
@@ -613,11 +618,19 @@ namespace DigtalOwl_Upload
                     errorMessage.AppendLine($"Request Method: {request.Method}");
                     errorMessage.AppendLine($"Request URI: {request.RequestUri}");
 
-                    // Include request headers
+                    // Include request headers (SECURITY: Filter sensitive headers)
                     errorMessage.AppendLine("Request Headers:");
                     foreach (var header in request.Headers)
                     {
-                        errorMessage.AppendLine($"{header.Key}: {string.Join(", ", header.Value)}");
+                        // Do not log Authorization header to prevent token exposure
+                        if (header.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase))
+                        {
+                            errorMessage.AppendLine($"{header.Key}: [REDACTED FOR SECURITY]");
+                        }
+                        else
+                        {
+                            errorMessage.AppendLine($"{header.Key}: {string.Join(", ", header.Value)}");
+                        }
                     }
                 }
                 
@@ -902,45 +915,70 @@ namespace DigtalOwl_Upload
             ErrorToExcel(errorStatus);
         }
 
-        private static string GetKey()
+        /// <summary>
+        /// Retrieves the API key from Azure Key Vault using DefaultAzureCredential.
+        /// This supports multiple authentication methods:
+        /// - Managed Identity (for Azure VMs, App Services, etc.)
+        /// - Azure CLI (for local development with 'az login')
+        /// - Visual Studio credentials
+        /// - Environment variables (AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID)
+        /// </summary>
+        /// <returns>The API key from Azure Key Vault, or empty string if retrieval fails</returns>
+        private static async Task<string> GetKeyFromAzureKeyVaultAsync()
         {
-            Microsoft.Office.Interop.Word.Application word = null;
-            Microsoft.Office.Interop.Word.Document doc = null;
-
             try
             {
-                string key = string.Empty;
-                word = new Microsoft.Office.Interop.Word.Application();
-                doc = word.Documents.Open(keyFile);
-                foreach (Microsoft.Office.Interop.Word.Paragraph objParagraph in doc.Paragraphs)
+                SimpleLogger.SimpleLog.Info($"Attempting to retrieve secret '{keyVaultSecretName}' from Azure Key Vault: {keyVaultUrl}");
+
+                // Create a SecretClient using DefaultAzureCredential
+                // DefaultAzureCredential will automatically try multiple authentication methods
+                var credential = new DefaultAzureCredential();
+                var client = new SecretClient(new Uri(keyVaultUrl), credential);
+
+                // Retrieve the secret
+                KeyVaultSecret secret = await client.GetSecretAsync(keyVaultSecretName);
+
+                if (secret == null || string.IsNullOrEmpty(secret.Value))
                 {
-                    key = objParagraph.Range.Text.Trim();
+                    SimpleLogger.SimpleLog.Error($"Secret '{keyVaultSecretName}' retrieved from Key Vault is null or empty");
+                    return string.Empty;
                 }
-                doc.Close();
-                word.Quit();
-                return key;
+
+                SimpleLogger.SimpleLog.Info($"Successfully retrieved secret '{keyVaultSecretName}' from Azure Key Vault");
+                return secret.Value;
             }
-            catch (Exception ex)
+            catch (Azure.RequestFailedException ex)
             {
-                SimpleLogger.SimpleLog.Info("Error while trying to get the license key from file - " + ex.Message);
+                SimpleLogger.SimpleLog.Error($"Azure Key Vault request failed: {ex.Status} - {ex.Message}");
+                SimpleLogger.SimpleLog.Error($"Error Code: {ex.ErrorCode}");
                 SimpleLogger.SimpleLog.Log(ex);
                 return string.Empty;
             }
-            finally
+            catch (Azure.Identity.AuthenticationFailedException ex)
             {
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-
-                if (doc != null)
-                {
-                    Marshal.ReleaseComObject(doc);
-                }
-
-                if (word != null)
-                {
-                    Marshal.ReleaseComObject(word);
-                }
+                SimpleLogger.SimpleLog.Error("Azure authentication failed. Please ensure you have proper credentials configured:");
+                SimpleLogger.SimpleLog.Error("  - For production: Use Managed Identity");
+                SimpleLogger.SimpleLog.Error("  - For development: Run 'az login' or set environment variables");
+                SimpleLogger.SimpleLog.Log(ex);
+                return string.Empty;
             }
+            catch (Exception ex)
+            {
+                SimpleLogger.SimpleLog.Error($"Unexpected error while retrieving secret from Azure Key Vault: {ex.Message}");
+                SimpleLogger.SimpleLog.Log(ex);
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// [DEPRECATED] Old method that retrieved API key from Word document.
+        /// This method is no longer used for security reasons.
+        /// API keys are now stored securely in Azure Key Vault.
+        /// </summary>
+        [Obsolete("This method is deprecated. Use GetKeyFromAzureKeyVaultAsync() instead.")]
+        private static string GetKey()
+        {
+            throw new NotSupportedException("Storing API keys in Word documents is no longer supported for security reasons. Please use Azure Key Vault.");
         }
 
 
